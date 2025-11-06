@@ -26,28 +26,38 @@ use std::env;
 use std::process::Command;
 use std::str::FromStr;
 
-const PUZZLE_CONTRACT: &str = include_str!("../../../examples/puzzle_jackpot.simf");
+const PUZZLE_CONTRACT: &str = include_str!("../../../SimplicityHL/examples/puzzle_jackpot.simf");
 
 fn main() -> Result<()> {
     // Parse arguments
     let args: Vec<String> = env::args().collect();
-    if args.len() != 3 {
-        eprintln!("Usage: {} <secret> <amount_in_btc>", args[0]);
-        eprintln!("\nExample:");
+    if args.len() < 3 || args.len() > 4 {
+        eprintln!("Usage: {} <secret> <amount_in_btc> [custom_hint]", args[0]);
+        eprintln!("\nExamples:");
         eprintln!("  {} \"satoshi\" 0.1", args[0]);
+        eprintln!("  {} \"bitcoin\" 0.5 \"Nome do criador do Bitcoin\"", args[0]);
+        eprintln!("  {} \"hodl\" 0.2 \"Famoso meme cripto de 4 letras\"", args[0]);
         std::process::exit(1);
     }
 
     let secret = &args[1];
     let amount = &args[2];
+    let custom_hint = args.get(3);
 
     println!("🎯 CREATING PUZZLE HUNT");
     println!("========================");
     println!();
 
     // 1. Calculate hash of the secret
+    // Convert secret to u256 (32 bytes with right-padding)
+    let mut secret_bytes = [0u8; 32];
+    let secret_raw = secret.as_bytes();
+    let len = secret_raw.len().min(32);
+    secret_bytes[32 - len..].copy_from_slice(&secret_raw[..len]);
+
+    // Calculate SHA256 of the padded secret (matching Simplicity contract)
     let mut hasher = Sha256::new();
-    hasher.update(secret.as_bytes());
+    hasher.update(&secret_bytes);
     let hash = hasher.finalize();
     let hash_hex = hex::encode(hash);
 
@@ -132,12 +142,15 @@ fn main() -> Result<()> {
     println!();
 
     // 5. Save information
+    let hint = custom_hint.map(|h| h.to_string())
+        .unwrap_or_else(|| format!("The password has {} characters", secret.len()));
+
     let info = serde_json::json!({
         "secret": secret,
         "hash": format!("0x{}", hash_hex),
         "address": address.to_string(),
         "amount": amount,
-        "hint": format!("The password has {} characters", secret.len()),
+        "hint": hint,
     });
 
     let filename = format!("puzzle_{}.json", &hash_hex[..8]);
@@ -152,7 +165,7 @@ fn main() -> Result<()> {
     println!("   Prize: {} L-BTC", amount);
     println!("   Secret Hash: 0x{}", hash_hex);
     println!();
-    println!("🔍 Hint: The password has {} characters", secret.len());
+    println!("🔍 Hint: {}", hint);
     println!();
     println!("⚠️  KEEP THE SECRET SAFE!");
     println!("   Secret: {} (don't share this!)", secret);

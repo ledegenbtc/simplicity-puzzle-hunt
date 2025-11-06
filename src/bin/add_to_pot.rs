@@ -11,8 +11,9 @@
  */
 
 use anyhow::{Context, Result};
-use elements::Address;
+use elements::{Address, Txid};
 use elementsd::ElementsD;
+use elementsd::bitcoincore_rpc::RpcApi;
 use std::env;
 use std::str::FromStr;
 
@@ -46,21 +47,29 @@ fn main() -> Result<()> {
     println!();
 
     // 2. Connect to elementsd (must be running!)
-    let mut daemon = ElementsD::new("/Users/felipe/Desktop/hub/blockchain/elements/src/elementsd")
+    let daemon = ElementsD::new("/Users/felipe/Desktop/hub/blockchain/elements/src/elementsd")
         .map_err(|e| anyhow::anyhow!("Failed to create elementsd client: {:?}", e))?;
-    daemon.chain = Some("liquidtestnet".to_string());
 
     // 3. Send funds
     let address = Address::from_str(puzzle_address)?;
 
     println!("📤 Sending funds...");
-    match daemon.send_to_address(&address, amount) {
-        txid => {
-            println!("✅ Funds added!");
-            println!("   TXID: {}", txid);
-            println!();
-        }
-    }
+
+    // Use the lower-level call method to send funds
+    let result = daemon.client()
+        .call::<serde_json::Value>("sendtoaddress", &[
+            serde_json::Value::String(address.to_string()),
+            serde_json::Value::String(amount.to_string()),
+        ])
+        .context("Failed to send transaction")?;
+
+    let txid_str = result.as_str()
+        .context("Invalid transaction ID response")?;
+    let txid = Txid::from_str(txid_str)?;
+
+    println!("✅ Funds added!");
+    println!("   TXID: {}", txid);
+    println!();
 
     // 4. Update JSON file (estimate)
     let new_amount: f64 = current_amount.parse::<f64>()? + amount.parse::<f64>()?;

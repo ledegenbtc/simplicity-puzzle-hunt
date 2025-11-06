@@ -16,7 +16,7 @@ use simplicityhl::value::ValueConstructible;
 use std::collections::HashMap;
 use std::env;
 
-const PUZZLE_CONTRACT: &str = include_str!("../../../examples/puzzle_jackpot.simf");
+const PUZZLE_CONTRACT: &str = include_str!("../../../SimplicityHL/examples/puzzle_jackpot.simf");
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();

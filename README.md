@@ -34,8 +34,15 @@ cd $HOME/Desktop/hub/blockchain/elements
 ### 3. Create a Puzzle
 
 ```bash
-# Create puzzle with secret "satoshi" and prize of 0.1 L-BTC
+# Create puzzle with secret "satoshi" and prize of 0.1 L-BTC (default hint)
 cargo run --bin create-puzzle -- "satoshi" 0.1
+
+# Create puzzle with custom hint
+cargo run --bin create-puzzle -- "bitcoin" 0.5 "Nome do criador do Bitcoin"
+
+# More examples with creative hints
+cargo run --bin create-puzzle -- "moon" 0.2 "Para onde o Bitcoin está indo 🚀"
+cargo run --bin create-puzzle -- "hodl" 0.3 "Famoso erro de digitação que virou meme"
 ```
 
 **Expected output:**
@@ -65,7 +72,7 @@ cargo run --bin create-puzzle -- "satoshi" 0.1
    Prize: 0.1 L-BTC
    Secret Hash: 0xa0dc65ff...
 
-🔍 Hint: The password has 7 characters
+🔍 Hint: The password has 7 characters (or your custom hint)
 
 ⚠️  KEEP THE SECRET SAFE!
    Secret: satoshi (don't share this!)
@@ -102,36 +109,60 @@ cargo run --bin add-to-pot -- puzzle_a0dc65ff.json 0.05
 When you know the secret, you can claim the prize:
 
 ```bash
-# First, find the UTXO
-./elements-cli.sh listunspent 0 9999999 '["tex1qjr5yzs..."]'
-
-# Then edit src/bin/solve_puzzle.rs with UTXO info (txid, vout, amount, asset)
-
 # Get destination address
-./elements-cli.sh getnewaddress
+./elements-cli getnewaddress
 
-# Solve the puzzle
+# Solve the puzzle (it will automatically find the UTXO!)
 cargo run --bin solve-puzzle -- puzzle_a0dc65ff.json "satoshi" <your_address>
 ```
+
+**Note:** The solve command now automatically:
+- Verifies the secret is correct
+- Scans the blockchain to find the puzzle UTXO
+- Creates and broadcasts the spending transaction
+- No need to manually edit any files!
 
 **If correct:**
 ```
 🎯 SOLVING PUZZLE
-=================
+==================
 
 📖 Reading puzzle from: puzzle_a0dc65ff.json
-   Puzzle address: tex1qjr5yzs...
-   Expected hash: 0xa0dc65ff...
+   📍 Puzzle address: tex1qjr5yzs...
+   🔐 Expected hash: 0xa0dc65ff...
+   💰 Prize amount: 0.1 L-BTC
+   💡 Hint: The password has 7 characters
 
 🔍 Verifying secret...
 ✅ Secret is correct!
 
-⚙️  Compiling contract...
+🔎 Looking for puzzle UTXO...
+🔎 Searching for UTXOs at address: tex1qjr5yzs...
+   Starting blockchain scan (this may take a moment)...
+   Found 1 UTXO(s)
+✅ Found UTXO!
+   TXID: abc123...
+   VOUT: 0
+   Amount: 0.1 L-BTC (10000000 sats)
+
+⚙️  Compiling Simplicity contract...
 ✅ Contract compiled!
 
+🪙 Asset ID: 144c6543
+
 💸 Creating spending transaction...
+   Output: 9997000 sats
+   Fee:    3000 sats
+   To:     <your_address>
+
 🔐 Creating witness with secret...
+🔓 Satisfying Simplicity program...
+   Program size: 90 bytes
+   Witness size: 32 bytes
+
+🔧 Building taproot witness...
 📡 Broadcasting transaction...
+   Transaction size: 361 bytes
 
 🎉🎉🎉 SUCCESS! 🎉🎉🎉
 
@@ -139,9 +170,12 @@ cargo run --bin solve-puzzle -- puzzle_a0dc65ff.json "satoshi" <your_address>
    TXID: def456...
 
 💰 Prize sent to: <your_address>
-   Amount: 14997000 sats
+   Amount: 9997000 sats (~0.09997 L-BTC)
 
 🏆 YOU WON THE PUZZLE!
+
+📊 Check your transaction:
+   elements-cli gettransaction def456...
 ```
 
 ## 📚 How It Works
