@@ -14,11 +14,18 @@ This project implements a "treasure hunt" game where:
 ### 1. Install Dependencies
 
 ```bash
-cd hackathon_puzzle
+# Clone SimplicityHL in the parent directory (required for compilation)
+cd ../
+git clone https://github.com/BlockstreamResearch/SimplicityHL.git
+
+# Return to the puzzle hunt project
+cd simplicity-puzzle-hunt
 
 # Build the project
 cargo build --release
 ```
+
+**Note:** The SimplicityHL repository must be cloned in the parent directory (`../SimplicityHL`) as the puzzle contracts depend on it for compilation.
 
 ### 2. Ensure elementsd is running
 
