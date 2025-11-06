@@ -150,23 +150,14 @@ cargo run --bin solve-puzzle -- puzzle_a0dc65ff.json "satoshi" <your_liquid_addr
 The core puzzle logic is implemented in Simplicity (`SimplicityHL/examples/puzzle_jackpot.simf`):
 
 ```simplicity
-// PUZZLE WITH VALUE-BASED ENTROPY
-// Note: This design has a critical bug with the current implementation
+// PUZZLE WITH SHA256 VERIFICATION
 param TARGET_HASH: u256;
 witness SECRET: u256;
 
 fn main() {
-    // Get the current UTXO value (in satoshis)
-    let input_value: u64 = jet::current_value();
-
-    // Convert u64 value to u256 for hashing
-    let value_u256: u256 = u256::from(input_value);
-
-    // Compute hash = SHA256(SECRET || VALUE)
-    // WARNING: This means the hash changes if UTXO value changes!
+    // Compute hash = SHA256(SECRET)
     let hasher = jet::sha_256_ctx_8_init();
     let hasher = jet::sha_256_ctx_8_add_32(hasher, SECRET);
-    let hasher = jet::sha_256_ctx_8_add_32(hasher, value_u256);  // <-- Bug: scripts don't account for this
     let computed_hash = jet::sha_256_ctx_8_finalize(hasher);
 
     // Verify the hash matches the target
@@ -174,7 +165,6 @@ fn main() {
 }
 ```
 
-⚠️ **See "Known Issues" section below for critical bug details**
 
 ### Taproot Structure
 
@@ -190,34 +180,33 @@ Taproot Output
 
 ## 🎮 Advanced Puzzle Types
 
-> ⚠️ **Note**: All puzzle types currently include UTXO value in hash computation, making them incompatible with the creation/solving scripts. See Known Issues section.
 
 ### 1. **Basic Puzzle** (`puzzle_jackpot.simf`)
-- SHA256(secret || value) verification
+- SHA256(secret) verification
 - Once created, the prize amount cannot be changed
 
 ### 2. **Time-Locked Puzzle** (`puzzle_chain_timelock.simf`)
 - Adds minimum block height requirement
 - Puzzle can only be solved after specific time
 - Perfect for scheduled reveals
-- Also uses SHA256(secret || value) formula
+- Uses SHA256(secret) formula
 
 ### 3. **Chained Puzzles** (`puzzle_chain.simf`)
 - Multiple puzzles that must be solved in sequence
 - Each solution reveals the next challenge
 - Great for multi-stage challenges or treasure hunts
-- Also uses SHA256(secret || value) formula
+- Uses SHA256(secret) formula
 
 ### 4. **Consolidation Puzzle** (`puzzle_consolidation.simf`)
 - Requires multiple secrets to unlock
 - Can implement M-of-N schemes
 - Useful for group challenges or multi-sig scenarios
-- Also uses SHA256(secret || value) formula
+- Uses SHA256(secret) formula
 
 ### 5. **Jackpot Consolidation** (`puzzle_jackpot_consolidation.simf`)
-- Combines value-based hash with consolidation requirements
+- Combines SHA256 verification with consolidation requirements
 - Multiple unlock conditions with fixed prize pool
-- Uses SHA256(secret || initial_value) formula
+- Uses SHA256(secret) formula
 
 ## 🏗️ Project Structure
 
@@ -363,13 +352,12 @@ cargo run --bin solve-puzzle -- <puzzle_file.json> <secret> <destination_address
 
 While not functions per se, these are the smart contract templates:
 
-- **puzzle_jackpot.simf**: Basic SHA256(secret || value) verification
+- **puzzle_jackpot.simf**: Basic SHA256(secret) verification
 - **puzzle_chain.simf**: Sequential multi-puzzle challenges
 - **puzzle_chain_timelock.simf**: Time-locked puzzles with block height requirements
 - **puzzle_consolidation.simf**: Multi-secret unlock requirements
-- **puzzle_jackpot_consolidation.simf**: Combined value-based and multi-secret mechanics
+- **puzzle_jackpot_consolidation.simf**: Combined SHA256 verification and multi-secret mechanics
 
-**Note**: All contracts currently include UTXO value in hash computation, causing incompatibility with the creation/solving scripts (see Known Issues).
 
 ## 🔒 Security Considerations
 
@@ -396,32 +384,6 @@ While not functions per se, these are the smart contract templates:
 - **Transparent validation**: Anyone can verify the contract logic
 - **Atomic execution**: Either the secret is correct or transaction fails
 
-## ⚠️ Known Issues
-
-### Critical Bug: Hash Computation Mismatch
-There's currently a fundamental mismatch between ALL contracts and the creation/solving scripts:
-
-**What the contracts do** (all `.simf` files):
-- Compute: `SHA256(SECRET || UTXO_VALUE)`
-- This includes the UTXO's value in satoshis in the hash
-- **All 5 puzzle types** have this same behavior
-
-**What the scripts do**:
-- `create_puzzle.rs` computes: `SHA256(SECRET)` only
-- `solve_puzzle.rs` also verifies: `SHA256(SECRET)` only
-- Neither script accounts for the UTXO value
-
-**Impact**:
-- **All puzzles created with current code are unsolvable**
-- The contracts will compute a different hash than what's stored as TARGET_HASH
-- This affects every single puzzle type in the project
-- Adding funds would change the UTXO value, making puzzles permanently unsolvable
-- The intended "jackpot" feature cannot work
-
-**Possible fixes**:
-1. **Fix the contracts**: Remove value from hash computation in all `.simf` files
-2. **Fix the scripts**: Update both scripts to include the UTXO value in hash calculations
-3. **Create new puzzle types**: Make simple versions that don't include value in the hash
 
 ## 🛠️ Troubleshooting
 
