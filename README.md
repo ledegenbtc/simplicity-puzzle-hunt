@@ -2,8 +2,6 @@
 
 **On-chain treasure hunt using Simplicity smart contracts on Liquid Network!**
 
-> ⚠️ **CRITICAL BUG**: All puzzle types are currently unsolvable due to a hash computation mismatch between contracts and scripts. See [Known Issues](#-known-issues) section for details.
-
 ## 📋 Table of Contents
 - [Overview](#-overview)
 - [Quick Start](#-quick-start)
