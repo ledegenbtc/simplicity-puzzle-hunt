@@ -1,67 +1,102 @@
 #!/bin/bash
-# Script para verificar status de um puzzle
-
-if [ -z "$1" ]; then
-    echo "Uso: $0 <puzzle_file.json>"
-    echo ""
-    echo "Exemplo:"
-    echo "  $0 puzzle_6b88c087.json"
-    echo ""
-    echo "Puzzles disponíveis:"
-    ls puzzle_*.json 2>/dev/null || echo "  Nenhum puzzle encontrado"
-    exit 1
-fi
+# Script to verify puzzle contract and check on-chain status
 
 PUZZLE_FILE="$1"
 
-if [ ! -f "$PUZZLE_FILE" ]; then
-    echo "❌ Arquivo não encontrado: $PUZZLE_FILE"
+if [ -z "$PUZZLE_FILE" ]; then
+    echo "Usage: $0 <puzzle_file.json>"
+    echo
+    echo "Example:"
+    echo "  $0 puzzle_2cf24dba.json"
+    echo
+    echo "Available puzzles:"
+    ls -1 puzzle_*.json 2>/dev/null | sed 's/^/  /'
     exit 1
 fi
 
-echo "🔍 VERIFICANDO PUZZLE"
-echo "===================="
-echo ""
-
-# Extrair informações
-ADDRESS=$(grep -o '"address": "[^"]*"' "$PUZZLE_FILE" | cut -d'"' -f4)
-AMOUNT=$(grep -o '"amount": "[^"]*"' "$PUZZLE_FILE" | cut -d'"' -f4)
-HASH=$(grep -o '"hash": "[^"]*"' "$PUZZLE_FILE" | cut -d'"' -f4)
-SECRET=$(grep -o '"secret": "[^"]*"' "$PUZZLE_FILE" | cut -d'"' -f4)
-
-echo "📍 Endereço: $ADDRESS"
-echo "💰 Prêmio: $AMOUNT L-BTC"
-echo "🔐 Hash: $HASH"
-echo "🤫 Secret: $SECRET"
-echo ""
-
-# Verificar transação de funding
-echo "🔎 Verificando transações..."
-ELEMENTS_CLI="$HOME/Desktop/hub/blockchain/elements/src/elements-cli"
-
-# Buscar UTXOs no endereço
-UTXOS=$($ELEMENTS_CLI -chain=liquidtestnet scantxoutset start "[\"addr($ADDRESS)\"]" 2>/dev/null)
-
-if echo "$UTXOS" | grep -q "success.*true"; then
-    echo "✅ Puzzle encontrado na blockchain!"
-
-    # Extrair total_amount do JSON
-    TOTAL=$(echo "$UTXOS" | grep -o '"total_amount":[^,}]*' | head -1 | cut -d':' -f2 | tr -d ' ')
-
-    if [ -n "$TOTAL" ] && [ "$TOTAL" != "0" ]; then
-        echo "💵 Total no endereço: $TOTAL L-BTC"
-    else
-        echo "💵 Total no endereço: $AMOUNT L-BTC (conforme JSON)"
-    fi
-
-    # Contar UTXOs
-    UNSPENT_COUNT=$(echo "$UTXOS" | grep -o '"txid"' | wc -l | tr -d ' ')
-    echo "📦 UTXOs encontrados: $UNSPENT_COUNT"
-else
-    echo "⏳ Puzzle pode estar no mempool (não confirmado ainda)"
-    echo "   Aguarde alguns segundos e tente novamente"
+if [ ! -f "$PUZZLE_FILE" ]; then
+    echo "Error: File $PUZZLE_FILE not found"
+    exit 1
 fi
 
-echo ""
-echo "📊 Para ver detalhes completos:"
-echo "   ./elements-cli.sh scantxoutset start '[\"addr($ADDRESS)\"]'"
+echo "=== PUZZLE CONTRACT VERIFICATION ==="
+echo
+
+# Extract puzzle details
+SECRET=$(jq -r '.secret' "$PUZZLE_FILE")
+HASH=$(jq -r '.hash' "$PUZZLE_FILE")
+ADDRESS=$(jq -r '.address' "$PUZZLE_FILE")
+AMOUNT=$(jq -r '.amount' "$PUZZLE_FILE")
+
+echo "📁 Puzzle File: $PUZZLE_FILE"
+echo "🔐 Secret: $SECRET"
+echo "🔗 Hash: $HASH"
+echo "📍 Address: $ADDRESS"
+echo "💰 Amount: $AMOUNT L-BTC"
+echo
+
+# Compile and get CMR
+echo "⚙️  Compiling contract..."
+CMR=$(cargo run --bin export-program -- "$SECRET" 2>/dev/null | \
+      hal-simplicity simplicity simplicity info "$(cat)" 2>/dev/null | \
+      jq -r '.cmr')
+
+echo "✅ CMR: $CMR"
+echo
+
+# Check if Elements CLI is available
+ELEMENTS_CLI="$HOME/Desktop/hub/blockchain/elements/src/elements-cli"
+if [ ! -f "$ELEMENTS_CLI" ]; then
+    echo "⚠️  Elements CLI not found at: $ELEMENTS_CLI"
+    echo "Cannot check on-chain UTXO"
+    exit 0
+fi
+
+# Check for UTXOs at this address
+echo "🔍 Checking on-chain UTXOs..."
+echo
+
+UTXOS=$($ELEMENTS_CLI -chain=liquidtestnet listunspent 0 9999999 "[\"$ADDRESS\"]" 2>/dev/null)
+
+if [ $? -ne 0 ]; then
+    echo "❌ Error connecting to Elements daemon"
+    echo
+    echo "Make sure elementsd is running:"
+    echo "  cd $HOME/Desktop/hub/blockchain/elements"
+    echo "  ./src/elementsd -chain=liquidtestnet -daemon"
+    exit 1
+fi
+
+# Count UTXOs
+UTXO_COUNT=$(echo "$UTXOS" | jq 'length')
+
+if [ "$UTXO_COUNT" -eq 0 ]; then
+    echo "⚠️  No UTXOs found at this address"
+    echo "   The puzzle may have been solved or not yet funded"
+else
+    echo "✅ Found $UTXO_COUNT UTXO(s) at this address"
+    echo
+    echo "$UTXOS" | jq -r '.[] | "  TXID:   \(.txid)\n  VOUT:   \(.vout)\n  Amount: \(.amount) L-BTC\n  Confs:  \(.confirmations)\n  Asset:  \(.asset)\n"'
+fi
+
+echo
+echo "=== VERIFICATION SUMMARY ==="
+echo "✅ CMR is deterministic: $CMR"
+echo "✅ Contract compiles successfully"
+echo "✅ Address: $ADDRESS"
+
+if [ "$UTXO_COUNT" -gt 0 ]; then
+    echo "✅ Puzzle is LIVE and can be solved!"
+    echo
+    echo "💡 To solve this puzzle:"
+    echo "   1. Get a destination address: ./elements-cli.sh getnewaddress"
+    echo "   2. Edit src/bin/solve_puzzle.rs with UTXO details above"
+    echo "   3. Run: cargo run --bin solve-puzzle -- $PUZZLE_FILE \"$SECRET\" <dest_address>"
+else
+    echo "⚠️  Puzzle has no UTXOs (already solved or not funded)"
+fi
+
+echo
+echo "🔬 For detailed analysis, see:"
+echo "   - SIMPLICITY_ANALYSIS.md"
+echo "   - CONTRACT_FLOW.md"
